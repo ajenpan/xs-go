@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+package battle;
+
+option go_package = "services/battle/proto;proto";
