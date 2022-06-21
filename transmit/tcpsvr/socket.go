@@ -7,9 +7,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	protobuf "google.golang.org/protobuf/proto"
-	// "hotwave/services/gateway/proto"
 )
 
 type OnMessageFunc func(*Socket, *Packet)
@@ -62,69 +59,19 @@ type Socket struct {
 	id     string
 	chSend chan *Packet // push message queue
 
-	timeOut      time.Duration
-	Meta         sync.Map
-	serialNumber uint64
+	timeOut time.Duration
+	Meta    sync.Map
 }
 
 func (s *Socket) ID() string {
 	return s.id
 }
 
-// func ConverPacket(msg *proto.ClientMessageWraper) *Packet {
-// 	raw, err := protobuf.Marshal(msg)
-// 	if err != nil {
-// 		return nil
-// 	}
-
-// 	packet := &Packet{
-// 		Raw: raw,
-// 		PacketHead: PacketHead{
-// 			Typ:    PacketTypePacket,
-// 			RawLen: int32(len(raw)),
-// 		},
-// 	}
-// 	return packet
-// }
-
-// func ConverMessage(p *Packet) (*proto.ClientMessageWraper, error) {
-// 	msg := &proto.ClientMessageWraper{}
-// 	err := protobuf.Unmarshal(p.Raw, msg)
-// 	return msg, err
-// }
-
-// func (a *Socket) SendWrap(msg *proto.ClientMessageWraper) error {
-// 	return a.sendPacket(ConverPacket(msg))
-// }
-
-func (a *Socket) sendPacket(p *Packet) error {
+func (a *Socket) Send(p *Packet) error {
 	if atomic.LoadInt32(&a.state) == SocketStatDisconnected {
 		return fmt.Errorf("sendPacket failed, the socket is disconnected")
 	}
 	a.chSend <- p
-	return nil
-}
-
-func (a *Socket) Send(msg protobuf.Message) error {
-	// raw, err := protobuf.Marshal(msg)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// methodName := string(protobuf.MessageName(msg))
-	// wrap := &proto.ClientMessageWraper{
-	// 	Body: raw,
-	// }
-
-	// if strings.HasSuffix(methodName, "Response") {
-	// 	wrap.Method = methodName[:len(methodName)-len("Response")]
-	// 	wrap.Typ = proto.ClientMessageWraper_Response
-	// } else {
-	// 	wrap.Method = methodName
-	// 	wrap.Typ = proto.ClientMessageWraper_Async
-	// }
-
-	// return a.SendWrap(wrap)
 	return nil
 }
 
@@ -171,10 +118,6 @@ func (a *Socket) writeWork() {
 	for p := range a.chSend {
 		a.writePacket(p)
 	}
-}
-
-func (a *Socket) SerialNumber() uint64 {
-	return atomic.AddUint64(&a.serialNumber, 1)
 }
 
 func (a *Socket) UID() uint64 {
@@ -229,6 +172,7 @@ func (a *Socket) readPacket(p *Packet) error {
 	}
 
 	var err error
+
 	headRaw := make([]byte, p.HeadLen())
 
 	if a.timeOut > 0 {

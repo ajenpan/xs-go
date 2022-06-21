@@ -56,6 +56,7 @@ func (p *PacketHead) Decode(headRaw []byte) error {
 	if len(headRaw) != p.HeadLen() {
 		return fmt.Errorf("head len is wrong")
 	}
+
 	p.Typ = uint8(headRaw[0])
 	if p.Typ <= PacketTypeStatAt_ || p.Typ > PacketTypeEndAt_ {
 		return fmt.Errorf("packet type is invalid")

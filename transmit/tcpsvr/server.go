@@ -1,6 +1,7 @@
 package tcpsvr
 
 import (
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -9,9 +10,10 @@ import (
 type ServerOption func(*ServerOptions)
 
 type ServerOptions struct {
-	Address string
-
+	Address          string
 	HeatbeatInterval time.Duration
+	OnMessage        OnMessageFunc
+	OnConn           OnConnStatFunc
 }
 
 func NewServer(opts *ServerOptions) *Server {
@@ -54,6 +56,7 @@ func (s *Server) Start() error {
 		return err
 	}
 	s.listener = listener
+
 	go func() {
 		defer listener.Close()
 		var tempDelay time.Duration = 0
@@ -64,7 +67,8 @@ func (s *Server) Start() error {
 			default:
 				conn, err := listener.Accept()
 				if err != nil {
-					if ne, ok := err.(net.Error); ok && ne.Temporary() {
+					log.Println(err)
+					if ne, ok := err.(net.Error); ok && ne.Timeout() {
 						if tempDelay == 0 {
 							tempDelay = 5 * time.Millisecond
 						} else {
@@ -89,86 +93,69 @@ func (s *Server) Start() error {
 }
 
 func (n *Server) accept(socket *Socket) {
-	// defer func() {
-	// 	if err := recover(); err != nil {
-	// 		log.Error(err)
-	// 	}
-	// }()
-	// n.wgConns.Add(1)
-	// defer n.wgConns.Done()
-	// defer socket.Close()
+	n.wgConns.Add(1)
+	defer n.wgConns.Done()
+	defer socket.Close()
 
-	// //read ack
-	// p := &Packet{}
-	// if err := socket.readPacket(p); err != nil {
-	// 	// log.Debugf("read ack error: %s", err)
-	// 	return
-	// }
+	//read ack
+	p := &Packet{}
+	if err := socket.readPacket(p); err != nil {
+		// log.Debugf("read ack error: %s", err)
+		return
+	}
 
-	// if p.Typ != PacketTypeAck {
-	// 	// log.Debugf("ack type not right: %d", p.Typ)
-	// 	return
-	// }
+	if p.Typ != PacketTypeAck {
+		// log.Debugf("ack type not right: %d", p.Typ)
+		return
+	}
 
-	// if err := socket.writePacket(p); err != nil {
-	// 	// log.Debugf("write ack error: %s", err)
-	// 	return
-	// }
+	if err := socket.writePacket(p); err != nil {
+		// log.Debugf("write ack error: %s", err)
+		return
+	}
 
-	// // after ack, the connection is established
-	// go socket.writeWork()
-	// n.storeSocket(socket)
-	// defer n.removeSocket(socket)
+	// after ack, the connection is established
+	go socket.writeWork()
+	n.storeSocket(socket)
+	defer n.removeSocket(socket)
 
-	// if n.opts.Adapter != nil {
-	// 	n.opts.Adapter.OnGateConnStat(socket, SocketStatConnected)
-	// 	defer n.opts.Adapter.OnGateConnStat(socket, SocketStatDisconnected)
-	// }
+	if n.opts.OnConn != nil {
+		n.opts.OnConn(socket, SocketStatConnected)
+		defer n.opts.OnConn(socket, SocketStatDisconnected)
+	}
 
-	// var socketErr error = nil
+	var socketErr error = nil
 
-	// for {
-	// 	p.Reset()
-	// 	socketErr = socket.readPacket(p)
-	// 	if socketErr != nil {
-	// 		if operror, ok := socketErr.(*net.OpError); ok {
-	// 			log.Debug(operror.Error())
-	// 		}
-	// 		break
-	// 	}
-	// 	brk := false
-	// 	switch p.Typ {
-	// 	case PacketTypePacket:
-	// 		if n.opts.Adapter != nil {
-	// 			msg, err := ConverMessage(p)
-	// 			if err != nil {
-	// 				log.Error(err)
-	// 				continue
-	// 			}
-	// 			func() {
-	// 				defer func() {
-	// 					if err := recover(); err != nil {
-	// 						log.Error(err)
-	// 					}
-	// 				}()
-	// 				n.opts.Adapter.OnGateAsync(socket, msg)
-	// 			}()
-	// 		}
-	// 	case PacketTypeHeartbeat:
-	// 		fallthrough
-	// 	case PacketTypeEcho:
-	// 		if err := socket.sendPacket(p); err != nil {
-	// 			log.Error(err)
-	// 			brk = true
-	// 		}
-	// 	default:
-	// 		brk = true
-	// 	}
+	for {
+		p.Reset()
+		socketErr = socket.readPacket(p)
+		if socketErr != nil {
+			if operror, ok := socketErr.(*net.OpError); ok {
+				log.Println(operror.Error())
+			}
+			break
+		}
+		brk := false
+		switch p.Typ {
+		case PacketTypePacket:
+			if n.opts.OnMessage != nil {
+				n.opts.OnMessage(socket, p)
+			}
+		case PacketTypeHeartbeat:
+			fallthrough
+		case PacketTypeEcho:
+			if err := socket.Send(p); err != nil {
+				log.Println(err)
+				brk = true
+			}
+		default:
+			brk = true
+		}
 
-	// 	if brk {
-	// 		break
-	// 	}
-	// }
+		if brk {
+			break
+		}
+	}
 }
 
 func (s *Server) GetSocket(id string) *Socket {
