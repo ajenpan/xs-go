@@ -1,12 +1,9 @@
 package utils
 
 import (
-	"fmt"
-	"path"
-	"strings"
+	"path/filepath"
 )
 
-func JoinURL(base string, paths ...string) string {
-	p := path.Join(paths...)
-	return fmt.Sprintf("%s/%s", strings.TrimRight(base, "/"), strings.TrimLeft(p, "/"))
+func JoinURL(paths ...string) string {
+	return filepath.ToSlash(filepath.Join(paths...))
 }
