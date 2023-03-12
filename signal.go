@@ -1,4 +1,4 @@
-package signal
+package xs
 
 import (
 	"os"
@@ -13,7 +13,7 @@ func ShutdownSignals() []os.Signal {
 	}
 }
 
-func WaitShutdown() os.Signal {
+func WaitShutdownSignal() os.Signal {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, ShutdownSignals()...)
 	return <-signals

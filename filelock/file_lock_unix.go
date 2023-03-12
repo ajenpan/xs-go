@@ -1,7 +1,7 @@
 //go:build !windows
 // +build !windows
 
-package file
+package filelock
 
 import (
 	"io"
